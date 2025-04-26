@@ -92,11 +92,11 @@ $ hurl -H "Accept: application/json" -H "X-Custom: my-value" https://example.com
 6. Allow self-signed certificate:
 
 ```bash
-hurl -k https://self-signed.badssl.com/
+$ hurl -k https://self-signed.badssl.com/
 ```
 
 7. Use Akamai debug headers:
 
 ```bash
-hurl --akamai-pragma https://www.example.com
+$ hurl --akamai-pragma https://www.example.com
 ```
