@@ -57,13 +57,13 @@ Examples
 1. Get default headers (colored):
 
 ```bash
-hurl https://www.example.com
+$ hurl https://www.example.com
 ```
 
 2. Verbose output (connection details, req/resp headers to stderr):
 
 ```bash
-hurl -v https://example.com
+$ hurl -v https://example.com
 ```
 
 3. Send a HEAD request:
@@ -81,8 +81,10 @@ $ hurl http://example.com/redirect/
 
 # Follow redirect and see final 200 response headers
 $ hurl -L http://example.com/redirect/
+```
 
 5. Add custom headers:
+
 ```bash
 $ hurl -H "Accept: application/json" -H "X-Custom: my-value" https://example.com
 ````
