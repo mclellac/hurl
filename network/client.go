@@ -1,14 +1,15 @@
+// network/client.go
 package network
 
 import (
 	"context" // Import context
 	"crypto/tls"
 	"fmt"
-	"io" // Import io
+	"io"
 	"net/http"
 	"net/http/httptrace" // Import httptrace
-	"os"                 // Import os for Stderr
-	"sort"               // Import sort for printing headers
+	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -82,10 +83,10 @@ func Fetch(opts RequestOptions) (*http.Response, error) {
 	if opts.Verbose {
 		trace = &httptrace.ClientTrace{
 			GetConn: func(hostPort string) {
-				fmt.Fprintf(os.Stderr, "* Trying %s...\n", hostPort) // Note: This might resolve to multiple IPs
+				fmt.Fprintf(os.Stderr, "* Trying %s...\n", hostPort)
 			},
 			DNSStart: func(info httptrace.DNSStartInfo) {
-				fmt.Fprintf(os.Stderr, "* Resolving timed out or error: %s...\n", info.Host)
+				fmt.Fprintf(os.Stderr, "* Resolving %s...\n", info.Host)
 			},
 			DNSDone: func(info httptrace.DNSDoneInfo) {
 				if info.Err != nil {
@@ -105,7 +106,8 @@ func Fetch(opts RequestOptions) (*http.Response, error) {
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "* Error connecting to %s: %v\n", addr, err)
 				} else {
-					fmt.Fprintf(os.Stderr, "* Connected to %s (%s)\n", addr, req.URL.Host) // Show hostname too
+					// Show hostname for context, as addr is just the IP
+					fmt.Fprintf(os.Stderr, "* Connected to %s (%s)\n", addr, req.URL.Host)
 				}
 			},
 			TLSHandshakeStart: func() {
@@ -114,7 +116,8 @@ func Fetch(opts RequestOptions) (*http.Response, error) {
 			TLSHandshakeDone: func(cs tls.ConnectionState, err error) {
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "* TLS handshake error: %v\n", err)
-					if cs.Version == 0 { // Handle cases where ConnectionState might be partially populated on error
+					// Don't try to print details if handshake failed badly
+					if cs.Version == 0 {
 						return
 					}
 				}
@@ -127,7 +130,7 @@ func Fetch(opts RequestOptions) (*http.Response, error) {
 				default: proto = fmt.Sprintf("TLS Unknown (0x%x)", cs.Version)
 				}
 				fmt.Fprintf(os.Stderr, "* TLS handshake complete\n")
-				fmt.Fprintf(os.Stderr, "* Protocol: %s\n", proto)
+				fmt.Fprintf(os.Stderr, "* Protocol: %s\n", proto) // Indented for readability
 				fmt.Fprintf(os.Stderr, "* Cipher Suite: %s\n", tls.CipherSuiteName(cs.CipherSuite))
 				if len(cs.PeerCertificates) > 0 {
 					cert := cs.PeerCertificates[0]
@@ -135,7 +138,6 @@ func Fetch(opts RequestOptions) (*http.Response, error) {
 					fmt.Fprintf(os.Stderr, "* Subject: %s\n", cert.Subject.String())
 					fmt.Fprintf(os.Stderr, "* Issuer: %s\n", cert.Issuer.String())
 					fmt.Fprintf(os.Stderr, "* Expiry: %s\n", cert.NotAfter.Format(time.RFC1123))
-					// Could add SANs etc. if needed
 				}
 				if cs.NegotiatedProtocol != "" {
 					fmt.Fprintf(os.Stderr, "* ALPN: server accepted %s\n", cs.NegotiatedProtocol)
@@ -143,18 +145,11 @@ func Fetch(opts RequestOptions) (*http.Response, error) {
 
 			},
 			GotConn: func(info httptrace.GotConnInfo) {
-				proto := "HTTP/1.1" // Assume 1.1 unless ALPN negotiated H2
-				if info.NegotiatedProtocol == "h2" {
-					proto = "HTTP/2.0"
-				}
-				fmt.Fprintf(os.Stderr, "* Using connection to %s, protocol %s\n", info.Conn.RemoteAddr(), proto)
+				// Corrected: Just print connection info. Protocol details come from TLS handshake.
+				fmt.Fprintf(os.Stderr, "* Connection established to %s\n", info.Conn.RemoteAddr())
 			},
-			// WroteHeaderField is too noisy for standard -v, skip it.
-			// WroteHeaders isn't granular enough. We print manually below.
-			// WroteRequest is called after body write, maybe useful later.
 			GotFirstResponseByte: func() {
-				// This signifies TTFB (Time To First Byte)
-				fmt.Fprintf(os.Stderr, "* Waiting for response headers...\n")
+				fmt.Fprintf(os.Stderr, "* Receiving response headers...\n")
 			},
 		}
 		// Attach trace to request context
@@ -165,24 +160,24 @@ func Fetch(opts RequestOptions) (*http.Response, error) {
 	// Print request headers if verbose
 	if opts.Verbose {
 		fmt.Fprintf(os.Stderr, "> %s %s %s\n", req.Method, req.URL.RequestURI(), req.Proto)
-		// Manually format Host header as Go's req.Header doesn't include it directly here
-		fmt.Fprintf(os.Stderr, "> Host: %s\n", req.Host)
-		printHeadersVerbose(os.Stderr, '>', req.Header) // Print other headers
-		fmt.Fprintln(os.Stderr, ">")                     // Blank line like curl
+		fmt.Fprintf(os.Stderr, "> Host: %s\n", req.Host) // req.Host is populated by NewRequest for client requests
+		printHeadersVerbose(os.Stderr, '>', req.Header)
+		fmt.Fprintln(os.Stderr, ">")
 	}
 
 	resp, err := client.Do(req)
 
-	// Print response headers if verbose *and* we got a response object
+	// Print response headers if verbose and we got a response object
 	if opts.Verbose && resp != nil {
 		fmt.Fprintf(os.Stderr, "< %s %s\n", resp.Proto, resp.Status)
-		printHeadersVerbose(os.Stderr, '<', resp.Header) // Print response headers
-		fmt.Fprintln(os.Stderr, "<")                     // Blank line
+		printHeadersVerbose(os.Stderr, '<', resp.Header)
+		fmt.Fprintln(os.Stderr, "<")
 	}
 
 	// Handle errors *after* potentially printing verbose info
 	if err != nil {
 		if opts.Verbose {
+			// Print error here in verbose mode for context
 			fmt.Fprintf(os.Stderr, "* Request failed: %v\n", err)
 		}
 		// Return potentially non-nil resp even on error, caller handles Close
@@ -192,7 +187,6 @@ func Fetch(opts RequestOptions) (*http.Response, error) {
 	// Note: Caller (main.go) is responsible for closing resp.Body
 	return resp, nil
 }
-
 
 // printHeadersVerbose prints headers to the specified writer with a prefix.
 // Headers are sorted for consistent output. Used only for verbose mode.
