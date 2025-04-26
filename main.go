@@ -3,11 +3,11 @@ package main
 
 import (
 	"fmt"
-	"hurl/display"
-	"hurl/network"
 	"os"
 
-	"hurl/config" // Import local packages
+	"github.com/mclellac/hurl/config"
+	"github.com/mclellac/hurl/display"
+	"github.com/mclellac/hurl/network"
 )
 
 func main() {

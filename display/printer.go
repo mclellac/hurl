@@ -3,10 +3,11 @@ package display
 
 import (
 	"fmt"
-	"hurl/config" // Import the local config package
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/mclellac/hurl/config"
 )
 
 // PrintHeaders takes HTTP headers and configuration, then prints them

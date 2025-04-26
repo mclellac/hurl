@@ -1,22 +1,24 @@
-// network/client.go
 package network
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"time"
 )
 
-// FetchHeaders performs an HTTP GET request to the specified URL
-// and returns the response. The caller is responsible for closing
-// the response body.
 func FetchHeaders(url string) (*http.Response, error) {
+	// Ensure you are using a transport that allows HTTP/2 (like default or a clone)
+	// If you previously forced HTTP/1.1, revert that change.
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = &tls.Config{} // Basic TLS config
+	// Ensure these lines that disable HTTP/2 are commented out or removed:
+	// tr.TLSNextProto = make(map[string]func(authority string, c *tls.Conn) http.RoundTripper)
+	// tr.ForceAttemptHTTP2 = false
+
 	client := &http.Client{
-		Timeout: 30 * time.Second, // Example timeout
-		// Prevent following redirects automatically if you *only* want the first response's headers
-		// CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		//  return http.ErrUseLastResponse
-		// },
+		Timeout:   30 * time.Second,
+		Transport: tr,
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -24,15 +26,15 @@ func FetchHeaders(url string) (*http.Response, error) {
 		return nil, fmt.Errorf("error creating request for %s: %w", url, err)
 	}
 
-	// Set a default User-Agent, good practice
-	req.Header.Set("User-Agent", "hurl/0.1 (Go-http-client)")
-	// Add any other default headers if needed
+	// Set the User-Agent to mimic current Chrome on Windows
+	userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+	req.Header.Set("User-Agent", userAgent) // <--- SET CHROME USER AGENT HERE
 
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error performing GET request to %s: %w", url, err)
 	}
+	defer resp.Body.Close() // Ensure body is closed here or in caller (main.go)
 
-	// Note: We DON'T close resp.Body here. The caller (main.go) will do that.
 	return resp, nil
 }
