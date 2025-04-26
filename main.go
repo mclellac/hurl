@@ -1,7 +1,8 @@
 package main
 
 import (
-	"flag"
+	// Use pflag instead of the standard flag package
+	flag "github.com/spf13/pflag"
 	"fmt"
 	"os"
 	"strings"
@@ -13,47 +14,43 @@ import (
 )
 
 func main() {
+	// Define flags using pflag
 	var customHeaders flagvar.HeaderFlags
-	// Flags definition
-	methodPtr := flag.String("X", "GET", "HTTP request method")
-	flag.StringVar(methodPtr, "request", "GET", "HTTP request method") // Alias
 
-	flag.Var(&customHeaders, "H", "Add custom request header (e.g., \"Key: Value\")")
-	flag.Var(&customHeaders, "header", "Add custom request header (e.g., \"Key: Value\")") // Alias
+	// Use pflag's "P" variants to define both long and short flags together
+	methodPtr := flag.StringP("request", "X", "GET", "HTTP request method")
+	flag.VarP(&customHeaders, "header", "H", "Add custom request header (e.g., \"Key: Value\")")
+	insecurePtr := flag.BoolP("insecure", "k", false, "Allow insecure server connections")
+	locationPtr := flag.BoolP("location", "L", false, "Follow redirects (HTTP 3xx)")
+	headPtr := flag.BoolP("head", "I", false, "Perform HTTP HEAD request (overrides -X)")
+	verbosePtr := flag.BoolP("verbose", "v", false, "Make the operation more talkative")
 
-	insecurePtr := flag.Bool("k", false, "Allow insecure server connections")
-	flag.BoolVar(insecurePtr, "insecure", false, "Allow insecure server connections") // Alias
-
-	locationPtr := flag.Bool("L", false, "Follow redirects (HTTP 3xx)") // NEW: -L flag
-	flag.BoolVar(locationPtr, "location", false, "Follow redirects (HTTP 3xx)") // Alias
-	// Removed --no-redirect flag
-
-	headPtr := flag.Bool("I", false, "Perform HTTP HEAD request (overrides -X)") // NEW: -I flag
-	flag.BoolVar(headPtr, "head", false, "Perform HTTP HEAD request (overrides -X)") // Alias
-
+	// Flags without short versions remain the same
 	akamaiPragmaPtr := flag.Bool("akamai-pragma", false, "Send Akamai Pragma debug headers")
-	verbosePtr := flag.Bool("v", false, "Make the operation more talkative")
-	flag.BoolVar(verbosePtr, "verbose", false, "Make the operation more talkative")
+
+	// pflag handles --help/-h automatically and correctly formats Usage
+	flag.Usage = func() {
+		// Custom usage message format
+		fmt.Fprintf(os.Stderr, "Usage: %s [flags] <URL>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Example: %s -I https://www.example.com\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Example: %s -L http://httpbin.org/redirect/1\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nFlags:\n")
+		flag.PrintDefaults() // pflag's PrintDefaults formats correctly
+	}
 
 	flag.Parse()
 
 	if flag.NArg() != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [flags] <URL>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Example: %s -I https://www.example.com\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Example: %s -L http://httpbin.org/redirect/1\n", os.Args[0])
-		flag.PrintDefaults()
+		flag.Usage() // Print the usage message on error
 		os.Exit(1)
 	}
 	url := flag.Arg(0)
 
-	// Determine method: Use -X unless -I is specified
 	method := strings.ToUpper(*methodPtr)
 	if *headPtr {
-		method = "HEAD" // -I overrides -X
+		method = "HEAD"
 	}
-
-	// Determine redirect policy: Follow only if -L is set
-	followRedirects := *locationPtr // Direct mapping now
+	followRedirects := *locationPtr
 
 	err := config.EnsureConfigDir()
 	if err != nil {
@@ -70,7 +67,7 @@ func main() {
 		URL:             url,
 		CustomHeaders:   customHeaders.Get(),
 		InsecureSkipTLS: *insecurePtr,
-		FollowRedirects: followRedirects, // Updated logic
+		FollowRedirects: followRedirects,
 		AddAkamaiPragma: *akamaiPragmaPtr,
 		Verbose:         *verbosePtr,
 		Config:          cfg,
