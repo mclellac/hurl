@@ -75,7 +75,7 @@ $ hurl -I https://example.com
 
 4. Follow redirects:
 
-````bash
+```bash
 # See initial 302 response headers (default behavior)
 $ hurl http://example.com/redirect/
 
@@ -87,7 +87,7 @@ $ hurl -L http://example.com/redirect/
 
 ```bash
 $ hurl -H "Accept: application/json" -H "X-Custom: my-value" https://example.com
-````
+```
 
 6. Allow self-signed certificate:
 
