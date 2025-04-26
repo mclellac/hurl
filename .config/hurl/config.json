@@ -1,0 +1,5 @@
+// ~/.config/hurl/config.json (Example path)
+{
+    "header_key_color": "green",
+    "header_value_color": "blue"
+}
