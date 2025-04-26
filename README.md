@@ -9,12 +9,13 @@ Requires Go (tested with version 1.18+).
 ```bash
 go install [github.com/mclellac/hurl@latest](https://github.com/mclellac/hurl@latest)
 ```
+
 Ensure your Go binary path (usually $GOPATH/bin or $HOME/go/bin) is included in your system's PATH environment variable.
 
 ## Usage
 
 ```bash
-$ hurl [flags] <URL>
+hurl [flags] <URL>
 ```
 
 By default, hurl performs a GET request to the specified <URL> and displays only the colored HTTP response headers to standard output. It does not follow redirects by default.
@@ -24,12 +25,12 @@ By default, hurl performs a GET request to the specified <URL> and displays only
 The command accepts the following flags:
 
 `--akamai-pragma`: Send Akamai Pragma debug headers with the request.
-`-H`, `--header` value: Add a custom header to the request (e.g., -H "Accept: application/json"). This flag can be specified multiple times.
+`-H`, `--header` value: Add a custom header to the request (e.g., -H "Accept: application/json").
 `-I`, `--head`: Perform an HTTP HEAD request instead of GET. This overrides the -X flag if both are used.
 `-k`, `--insecure`: Allow connections to SSL sites without verifying the server certificate.
 `-L`, `--location`: Follow HTTP redirects (responses with 3xx status codes). Default behavior is not to follow redirects.
 `-X`, `--request` string: Specify the request method to use (e.g., POST, PUT, DELETE). (default: "GET")
-`-v`, `--verbose`: Enable verbose output. This prints detailed connection information, TLS handshake details, request headers (>), andresponse headers (<) to standard error (stderr) with coloring. Standard header output to stdout is suppressed in verbose mode.
+`-v`, `--verbose`: Enable verbose output. This prints detailed connection information.
 `--help`: Display this help message.
 
 ## Configuration
@@ -42,6 +43,7 @@ The colors used for displaying the default response headers (key vs. value) can 
 The directory structure (hurl/) will be created if it doesn't exist on first run (or if config loading fails).
 
 Example config.json:
+
 ```json
 {
   "header_key_color": "yellow",
@@ -53,6 +55,7 @@ Supported color names: red, green, yellow, blue, purple, cyan, white. If the fil
 Examples
 
 1. Get default headers (colored):
+
 ```bash
 hurl https://www.example.com
 ```
@@ -60,10 +63,11 @@ hurl https://www.example.com
 2. Verbose output (connection details, req/resp headers to stderr):
 
 ```bash
-$ hurl -v https://example.com
+hurl -v https://example.com
 ```
 
 3. Send a HEAD request:
+
 ```bash
 $ hurl -I https://example.com
 # Equivalent to: hurl -X HEAD https://example.com
@@ -71,7 +75,7 @@ $ hurl -I https://example.com
 
 4. Follow redirects:
 
-```bash
+````bash
 # See initial 302 response headers (default behavior)
 $ hurl http://example.com/redirect/
 
@@ -81,14 +85,16 @@ $ hurl -L http://example.com/redirect/
 5. Add custom headers:
 ```bash
 $ hurl -H "Accept: application/json" -H "X-Custom: my-value" https://example.com
-```
+````
 
 6. Allow self-signed certificate:
+
 ```bash
-$ hurl -k https://self-signed.badssl.com/
+hurl -k https://self-signed.badssl.com/
 ```
 
 7. Use Akamai debug headers:
+
 ```bash
-$ hurl --akamai-pragma https://www.example.com
+hurl --akamai-pragma https://www.example.com
 ```
