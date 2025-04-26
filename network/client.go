@@ -7,14 +7,12 @@ import (
 	"time"
 )
 
-func FetchHeaders(url string) (*http.Response, error) {
-	// Ensure you are using a transport that allows HTTP/2 (like default or a clone)
-	// If you previously forced HTTP/1.1, revert that change.
+const akamaiPragmaValue = "akamai-x-get-request-id,akamai-x-get-cache-key,akamai-x-cache-on,akamai-x-cache-remote-on,akamai-x-get-true-cache-key,akamai-x-check-cacheable,akamai-x-get-extracted-values,akamai-x-feo-trace,x-akamai-logging-mode: verbose"
+
+func FetchHeaders(url string, addAkamaiPragma bool) (*http.Response, error) {
+
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.TLSClientConfig = &tls.Config{} // Basic TLS config
-	// Ensure these lines that disable HTTP/2 are commented out or removed:
-	// tr.TLSNextProto = make(map[string]func(authority string, c *tls.Conn) http.RoundTripper)
-	// tr.ForceAttemptHTTP2 = false
+	tr.TLSClientConfig = &tls.Config{}
 
 	client := &http.Client{
 		Timeout:   30 * time.Second,
@@ -26,15 +24,18 @@ func FetchHeaders(url string) (*http.Response, error) {
 		return nil, fmt.Errorf("error creating request for %s: %w", url, err)
 	}
 
-	// Set the User-Agent to mimic current Chrome on Windows
 	userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
-	req.Header.Set("User-Agent", userAgent) // <--- SET CHROME USER AGENT HERE
+	req.Header.Set("User-Agent", userAgent)
+
+	if addAkamaiPragma {
+		req.Header.Set("Pragma", akamaiPragmaValue)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error performing GET request to %s: %w", url, err)
 	}
-	defer resp.Body.Close() // Ensure body is closed here or in caller (main.go)
 
+	// Note: Caller (main.go) is responsible for closing resp.Body
 	return resp, nil
 }

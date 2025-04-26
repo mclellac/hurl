@@ -1,7 +1,7 @@
-// main.go
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -11,53 +11,53 @@ import (
 )
 
 func main() {
-	// --- Argument Parsing ---
-	if len(os.Args) != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s <URL>\n", os.Args[0])
+	akamaiPragmaPtr := flag.Bool("akamai-pragma", false, "Send Akamai Pragma debug headers")
+
+	flag.Parse()
+
+	if flag.NArg() != 1 {
+		fmt.Fprintf(os.Stderr, "Usage: %s [--akamai-pragma] <URL>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Example: %s https://www.example.com\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Example: %s --akamai-pragma https://www.akamai.com\n", os.Args[0])
+		flag.PrintDefaults()
 		os.Exit(1)
 	}
-	url := os.Args[1]
+	url := flag.Arg(0)
 
-	// --- Configuration ---
-	// Ensure config directory exists (optional, good for first run)
 	err := config.EnsureConfigDir()
 	if err != nil {
-		// Non-fatal, just warn
 		fmt.Fprintf(os.Stderr, "Warning: Could not ensure config directory: %v\n", err)
 	}
 
 	cfg, err := config.LoadConfig()
-	if err != nil {
-		// LoadConfig already prints warnings, but we could exit if needed
+	if err != err {
 		fmt.Fprintf(os.Stderr, "Error loading configuration: %v. Exiting.\n", err)
-		os.Exit(1) // Or decide to proceed with defaults if LoadConfig returns them
+		os.Exit(1)
 	}
 
-	// --- HTTP Request ---
-	resp, err := network.FetchHeaders(url)
+	resp, err := network.FetchHeaders(url, *akamaiPragmaPtr)
+	// err stored from FetchHeaders is checked later
+
+	if resp != nil {
+		defer resp.Body.Close()
+	}
+
+	// Check error from FetchHeaders *after* attempting Close() via defer
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching URL: %v\n", err)
 		os.Exit(1)
 	}
-	// CRITICAL: Always ensure the response body is closed to free resources,
-	// even if you don't read from it.
-	defer resp.Body.Close()
 
-	// --- Display Headers ---
-	// Optionally print the status line first for context
 	fmt.Printf("%s%s %s%s\n",
-		config.GetAnsiCode(cfg.HeaderValueColor), // Use value color for status? Or a dedicated one?
+		config.GetAnsiCode(cfg.HeaderValueColor),
 		resp.Proto,
 		resp.Status,
 		config.ColorReset)
 
 	display.PrintHeaders(resp.Header, cfg)
 
-	// --- Exit ---
-	// Check status code for basic success indication (optional)
 	if resp.StatusCode >= 400 {
-		// Optionally exit with non-zero status for client/server errors
-		// os.Exit(2) // Or some other non-zero code
+		// os.Exit(2) // Optional: exit non-zero for >= 400 status codes
 	}
 }
+

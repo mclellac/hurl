@@ -24,7 +24,7 @@ func PrintHeaders(headers http.Header, cfg config.Config) {
 	}
 	sort.Strings(keys)
 
-	// Print Status Line (optional but often useful, like curl -i)
+	// Print Status Line
 	// If resp is available here, you could print resp.Status
 	// fmt.Printf("%sHTTP/%d.%d %s%s\n", valueColor, resp.ProtoMajor, resp.ProtoMinor, resp.Status, resetColor)
 
