@@ -8,14 +8,12 @@ import (
 
 	"github.com/mclellac/hurl/config"
 	"github.com/mclellac/hurl/display"
-	"github.com/mclellac/hurl/flagvar" // Import is now used correctly
+	"github.com/mclellac/hurl/flagvar"
 	"github.com/mclellac/hurl/network"
 )
 
 func main() {
-	// Use the exported type HeaderFlags from the flagvar package.
-	var customHeaders flagvar.HeaderFlags // Corrected: Use exported type name
-
+	var customHeaders flagvar.HeaderFlags
 	methodPtr := flag.String("X", "GET", "HTTP method (GET, POST, PUT, DELETE, etc.)")
 	flag.StringVar(methodPtr, "request", "GET", "HTTP method (GET, POST, PUT, DELETE, etc.)")
 	flag.Var(&customHeaders, "H", "Add custom request header (e.g., \"Content-Type: application/json\") (can be used multiple times)")
@@ -26,12 +24,14 @@ func main() {
 
 	noRedirectPtr := flag.Bool("no-redirect", false, "Do not follow HTTP redirects (HTTP 3xx)")
 	akamaiPragmaPtr := flag.Bool("akamai-pragma", false, "Send Akamai Pragma debug headers")
+	verbosePtr := flag.Bool("v", false, "Make the operation more talkative") // Add -v flag
+	flag.BoolVar(verbosePtr, "verbose", false, "Make the operation more talkative") // Add --verbose alias
 
 	flag.Parse()
 
 	if flag.NArg() != 1 {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags] <URL>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Example: %s -X POST -H \"Content-Type: application/json\" https://httpbin.org/post\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Example: %s -v -X POST -H \"Content-Type: application/json\" https://httpbin.org/post\n", os.Args[0])
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
@@ -52,10 +52,11 @@ func main() {
 	reqOptions := network.RequestOptions{
 		Method:          method,
 		URL:             url,
-		CustomHeaders:   customHeaders.Get(), // Get() method still works
+		CustomHeaders:   customHeaders.Get(),
 		InsecureSkipTLS: *insecurePtr,
 		FollowRedirects: followRedirects,
 		AddAkamaiPragma: *akamaiPragmaPtr,
+		Verbose:         *verbosePtr, // Pass verbose flag value
 	}
 
 	resp, err := network.Fetch(reqOptions)
@@ -67,17 +68,24 @@ func main() {
 
 	// Check error from Fetch *after* attempting Close() via defer
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error executing request: %v\n", err)
+		// Error is already printed within network.Fetch if verbose, or here if not.
+		if !reqOptions.Verbose { // Avoid double printing if verbose already printed it
+			fmt.Fprintf(os.Stderr, "Error executing request: %v\n", err)
+		}
 		os.Exit(1)
 	}
 
-	fmt.Printf("%s%s %s%s\n",
-		config.GetAnsiCode(cfg.HeaderValueColor),
-		resp.Proto,
-		resp.Status,
-		config.ColorReset)
+	// Standard output (headers) only if not verbose
+	// Verbose mode handles printing response headers to stderr already
+	if !reqOptions.Verbose {
+		fmt.Printf("%s%s %s%s\n",
+			config.GetAnsiCode(cfg.HeaderValueColor),
+			resp.Proto,
+			resp.Status,
+			config.ColorReset)
 
-	display.PrintHeaders(resp.Header, cfg)
+		display.PrintHeaders(resp.Header, cfg)
+	}
 
 	if resp.StatusCode >= 400 {
 		// os.Exit(2) // Optional: exit non-zero for >= 400 status codes
