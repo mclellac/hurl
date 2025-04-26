@@ -24,14 +24,14 @@ By default, hurl performs a GET request to the specified <URL> and displays only
 
 The command accepts the following flags:
 
-    `--akamai-pragma`: Send Akamai Pragma debug headers with the request.
-    `-H`, `--header` value: Add a custom header to the request (e.g., -H "Accept: application/json").
-    `-I`, `--head`: Perform an HTTP HEAD request instead of GET. This overrides the -X flag if both are used.
-    `-k`, `--insecure`: Allow connections to SSL sites without verifying the server certificate.
-    `-L`, `--location`: Follow HTTP redirects (responses with 3xx status codes). Default behavior is not to follow redirects.
-    `-X`, `--request` string: Specify the request method to use (e.g., POST, PUT, DELETE). (default: "GET")
-    `-v`, `--verbose`: Enable verbose output. This prints detailed connection information.
-    `--help`: Display this help message.
+    --akamai-pragma: Send Akamai Pragma debug headers with the request.
+    -H, --header value: Add a custom header to the request (e.g., -H "Accept: application/json").
+    -I,--head: Perform an HTTP HEAD request instead of GET. This overrides the -X flag if both are used.
+    -k, --insecure: Allow connections to SSL sites without verifying the server certificate.
+    -L, --location: Follow HTTP redirects (responses with 3xx status codes). Default behavior is not to follow redirects.
+    -X, --request string: Specify the request method to use (e.g., POST, PUT, DELETE). (default: "GET")
+    -v, --verbose: Enable verbose output. This prints detailed connection information.
+    --help: Display this help message.
 
 ## Configuration
 
