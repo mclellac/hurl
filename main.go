@@ -14,30 +14,46 @@ import (
 
 func main() {
 	var customHeaders flagvar.HeaderFlags
-	methodPtr := flag.String("X", "GET", "HTTP method (GET, POST, PUT, DELETE, etc.)")
-	flag.StringVar(methodPtr, "request", "GET", "HTTP method (GET, POST, PUT, DELETE, etc.)")
-	flag.Var(&customHeaders, "H", "Add custom request header (e.g., \"Content-Type: application/json\") (can be used multiple times)")
-	flag.Var(&customHeaders, "header", "Add custom request header (e.g., \"Content-Type: application/json\") (can be used multiple times)")
+	// Flags definition
+	methodPtr := flag.String("X", "GET", "HTTP request method")
+	flag.StringVar(methodPtr, "request", "GET", "HTTP request method") // Alias
 
-	insecurePtr := flag.Bool("k", false, "Allow insecure server connections when using SSL")
-	flag.BoolVar(insecurePtr, "insecure", false, "Allow insecure server connections when using SSL")
+	flag.Var(&customHeaders, "H", "Add custom request header (e.g., \"Key: Value\")")
+	flag.Var(&customHeaders, "header", "Add custom request header (e.g., \"Key: Value\")") // Alias
 
-	noRedirectPtr := flag.Bool("no-redirect", false, "Do not follow HTTP redirects (HTTP 3xx)")
+	insecurePtr := flag.Bool("k", false, "Allow insecure server connections")
+	flag.BoolVar(insecurePtr, "insecure", false, "Allow insecure server connections") // Alias
+
+	locationPtr := flag.Bool("L", false, "Follow redirects (HTTP 3xx)") // NEW: -L flag
+	flag.BoolVar(locationPtr, "location", false, "Follow redirects (HTTP 3xx)") // Alias
+	// Removed --no-redirect flag
+
+	headPtr := flag.Bool("I", false, "Perform HTTP HEAD request (overrides -X)") // NEW: -I flag
+	flag.BoolVar(headPtr, "head", false, "Perform HTTP HEAD request (overrides -X)") // Alias
+
 	akamaiPragmaPtr := flag.Bool("akamai-pragma", false, "Send Akamai Pragma debug headers")
-	verbosePtr := flag.Bool("v", false, "Make the operation more talkative") // Add -v flag
-	flag.BoolVar(verbosePtr, "verbose", false, "Make the operation more talkative") // Add --verbose alias
+	verbosePtr := flag.Bool("v", false, "Make the operation more talkative")
+	flag.BoolVar(verbosePtr, "verbose", false, "Make the operation more talkative")
 
 	flag.Parse()
 
 	if flag.NArg() != 1 {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags] <URL>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Example: %s -v -X POST -H \"Content-Type: application/json\" https://httpbin.org/post\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Example: %s -I https://www.example.com\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Example: %s -L http://httpbin.org/redirect/1\n", os.Args[0])
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 	url := flag.Arg(0)
+
+	// Determine method: Use -X unless -I is specified
 	method := strings.ToUpper(*methodPtr)
-	followRedirects := !(*noRedirectPtr)
+	if *headPtr {
+		method = "HEAD" // -I overrides -X
+	}
+
+	// Determine redirect policy: Follow only if -L is set
+	followRedirects := *locationPtr // Direct mapping now
 
 	err := config.EnsureConfigDir()
 	if err != nil {
@@ -54,13 +70,13 @@ func main() {
 		URL:             url,
 		CustomHeaders:   customHeaders.Get(),
 		InsecureSkipTLS: *insecurePtr,
-		FollowRedirects: followRedirects,
+		FollowRedirects: followRedirects, // Updated logic
 		AddAkamaiPragma: *akamaiPragmaPtr,
-		Verbose:         *verbosePtr, // Pass verbose flag value
+		Verbose:         *verbosePtr,
+		Config:          cfg,
 	}
 
 	resp, err := network.Fetch(reqOptions)
-	// err stored from Fetch is checked later
 
 	if resp != nil {
 		defer resp.Body.Close()
@@ -68,15 +84,12 @@ func main() {
 
 	// Check error from Fetch *after* attempting Close() via defer
 	if err != nil {
-		// Error is already printed within network.Fetch if verbose, or here if not.
-		if !reqOptions.Verbose { // Avoid double printing if verbose already printed it
-			fmt.Fprintf(os.Stderr, "Error executing request: %v\n", err)
+		if !reqOptions.Verbose {
+			fmt.Fprintf(os.Stderr, "%sError executing request: %v%s\n", config.ColorRed, err, config.ColorReset)
 		}
 		os.Exit(1)
 	}
 
-	// Standard output (headers) only if not verbose
-	// Verbose mode handles printing response headers to stderr already
 	if !reqOptions.Verbose {
 		fmt.Printf("%s%s %s%s\n",
 			config.GetAnsiCode(cfg.HeaderValueColor),
@@ -84,7 +97,7 @@ func main() {
 			resp.Status,
 			config.ColorReset)
 
-		display.PrintHeaders(resp.Header, cfg)
+		display.PrintHeaders(os.Stdout, resp.Header, cfg)
 	}
 
 	if resp.StatusCode >= 400 {

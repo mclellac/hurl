@@ -1,17 +1,18 @@
-// network/client.go
+// Package network handles making HTTP requests.
 package network
 
 import (
-	"context" // Import context
 	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptrace" // Import httptrace
+	"net/http/httptrace"
 	"os"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/mclellac/hurl/config"
 )
 
 // akamaiPragmaValue is the static string used for the Akamai Pragma header.
@@ -19,18 +20,27 @@ const akamaiPragmaValue = "akamai-x-get-request-id,akamai-x-get-cache-key,akamai
 
 // RequestOptions bundles parameters for making the HTTP request.
 type RequestOptions struct {
-	Method          string
-	URL             string
-	CustomHeaders   []string
-	InsecureSkipTLS bool
-	FollowRedirects bool
-	AddAkamaiPragma bool
-	Verbose         bool // Added verbose flag
+	Method          string        // HTTP method (e.g., "GET", "POST")
+	URL             string        // Target URL
+	CustomHeaders   []string      // Custom headers in "Key: Value" format
+	InsecureSkipTLS bool          // If true, skip TLS certificate verification
+	FollowRedirects bool          // If true, follow HTTP 3xx redirects
+	AddAkamaiPragma bool          // If true, add the Akamai debug Pragma header
+	Verbose         bool          // If true, enable verbose output to stderr
+	Config          config.Config // Color configuration
 }
 
 // Fetch performs an HTTP request based on the provided options.
-// The caller is responsible for closing the response body.
+// The caller is responsible for closing the response body if the returned response is non-nil.
 func Fetch(opts RequestOptions) (*http.Response, error) {
+
+	keyColor := config.GetAnsiCode(opts.Config.HeaderKeyColor)
+	valueColor := config.GetAnsiCode(opts.Config.HeaderValueColor)
+	traceColor := config.ColorWhite
+	errorColor := config.ColorRed
+	successColor := config.ColorGreen
+	warningColor := config.ColorYellow
+	resetColor := config.ColorReset
 
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	if tr.TLSClientConfig == nil {
@@ -43,16 +53,18 @@ func Fetch(opts RequestOptions) (*http.Response, error) {
 		Transport: tr,
 	}
 
+	// This logic remains correct: if FollowRedirects is false (now the default unless -L is passed),
+	// set CheckRedirect to prevent following. Otherwise, use default behavior.
 	if !opts.FollowRedirects {
 		client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 			if opts.Verbose {
-				fmt.Fprintf(os.Stderr, "* Ignoring redirect response from %s\n", req.URL)
+				fmt.Fprintf(os.Stderr, "%s* Ignoring redirect response from %s%s\n", traceColor, req.URL, resetColor)
 			}
 			return http.ErrUseLastResponse
 		}
 	}
 
-	req, err := http.NewRequest(opts.Method, opts.URL, nil) // Body nil for now
+	req, err := http.NewRequest(opts.Method, opts.URL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
@@ -80,43 +92,42 @@ func Fetch(opts RequestOptions) (*http.Response, error) {
 	}
 
 	var trace *httptrace.ClientTrace
+	currentReq := req
 	if opts.Verbose {
 		trace = &httptrace.ClientTrace{
 			GetConn: func(hostPort string) {
-				fmt.Fprintf(os.Stderr, "* Trying %s...\n", hostPort)
+				fmt.Fprintf(os.Stderr, "%s* Trying %s...%s\n", traceColor, hostPort, resetColor)
 			},
 			DNSStart: func(info httptrace.DNSStartInfo) {
-				fmt.Fprintf(os.Stderr, "* Resolving %s...\n", info.Host)
+				fmt.Fprintf(os.Stderr, "%s* Resolving %s...%s\n", traceColor, info.Host, resetColor)
 			},
 			DNSDone: func(info httptrace.DNSDoneInfo) {
 				if info.Err != nil {
-					fmt.Fprintf(os.Stderr, "* Error resolving host %s: %v\n", req.URL.Host, info.Err)
+					fmt.Fprintf(os.Stderr, "%s* Error resolving host %s: %v%s\n", errorColor, currentReq.URL.Host, info.Err, resetColor)
 					return
 				}
 				addrs := []string{}
 				for _, ip := range info.Addrs {
 					addrs = append(addrs, ip.String())
 				}
-				fmt.Fprintf(os.Stderr, "* Resolved %s to %v\n", req.URL.Host, addrs)
+				fmt.Fprintf(os.Stderr, "%s* Resolved %s to %s%v%s\n", traceColor, currentReq.URL.Host, valueColor, addrs, resetColor)
 			},
 			ConnectStart: func(network, addr string) {
-				fmt.Fprintf(os.Stderr, "* Connecting to %s (%s)\n", addr, network)
+				fmt.Fprintf(os.Stderr, "%s* Connecting to %s%s (%s)%s\n", traceColor, valueColor, addr, network, resetColor)
 			},
 			ConnectDone: func(network, addr string, err error) {
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "* Error connecting to %s: %v\n", addr, err)
+					fmt.Fprintf(os.Stderr, "%s* Error connecting to %s: %v%s\n", errorColor, addr, err, resetColor)
 				} else {
-					// Show hostname for context, as addr is just the IP
-					fmt.Fprintf(os.Stderr, "* Connected to %s (%s)\n", addr, req.URL.Host)
+					fmt.Fprintf(os.Stderr, "%s* Connected to %s%s (%s)%s\n", traceColor, valueColor, addr, currentReq.URL.Host, resetColor)
 				}
 			},
 			TLSHandshakeStart: func() {
-				fmt.Fprintf(os.Stderr, "* Performing TLS handshake...\n")
+				fmt.Fprintf(os.Stderr, "%s* Performing TLS handshake...%s\n", traceColor, resetColor)
 			},
 			TLSHandshakeDone: func(cs tls.ConnectionState, err error) {
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "* TLS handshake error: %v\n", err)
-					// Don't try to print details if handshake failed badly
+					fmt.Fprintf(os.Stderr, "%s* TLS handshake error: %v%s\n", errorColor, err, resetColor)
 					if cs.Version == 0 {
 						return
 					}
@@ -129,68 +140,88 @@ func Fetch(opts RequestOptions) (*http.Response, error) {
 				case tls.VersionTLS13: proto = "TLSv1.3"
 				default: proto = fmt.Sprintf("TLS Unknown (0x%x)", cs.Version)
 				}
-				fmt.Fprintf(os.Stderr, "* TLS handshake complete\n")
-				fmt.Fprintf(os.Stderr, "* Protocol: %s\n", proto) // Indented for readability
-				fmt.Fprintf(os.Stderr, "* Cipher Suite: %s\n", tls.CipherSuiteName(cs.CipherSuite))
+				fmt.Fprintf(os.Stderr, "%s* TLS handshake complete%s\n", traceColor, resetColor)
+				fmt.Fprintf(os.Stderr, "%s* Protocol: %s%s%s\n", traceColor, valueColor, proto, resetColor)
+				fmt.Fprintf(os.Stderr, "%s* Cipher Suite: %s%s%s\n", traceColor, valueColor, tls.CipherSuiteName(cs.CipherSuite), resetColor)
 				if len(cs.PeerCertificates) > 0 {
 					cert := cs.PeerCertificates[0]
-					fmt.Fprintf(os.Stderr, "* Server certificate:\n")
-					fmt.Fprintf(os.Stderr, "* Subject: %s\n", cert.Subject.String())
-					fmt.Fprintf(os.Stderr, "* Issuer: %s\n", cert.Issuer.String())
-					fmt.Fprintf(os.Stderr, "* Expiry: %s\n", cert.NotAfter.Format(time.RFC1123))
+					fmt.Fprintf(os.Stderr, "%s* Server certificate:%s\n", traceColor, resetColor)
+					fmt.Fprintf(os.Stderr, "%s* Subject: %s%s%s\n", traceColor, valueColor, cert.Subject.String(), resetColor)
+					fmt.Fprintf(os.Stderr, "%s* Issuer: %s%s%s\n", traceColor, valueColor, cert.Issuer.String(), resetColor)
+					fmt.Fprintf(os.Stderr, "%s* Expiry: %s%s%s\n", traceColor, valueColor, cert.NotAfter.Format(time.RFC1123), resetColor)
 				}
 				if cs.NegotiatedProtocol != "" {
-					fmt.Fprintf(os.Stderr, "* ALPN: server accepted %s\n", cs.NegotiatedProtocol)
+					fmt.Fprintf(os.Stderr, "%s* ALPN: server accepted %s%s%s\n", traceColor, valueColor, cs.NegotiatedProtocol, resetColor)
 				}
 
 			},
 			GotConn: func(info httptrace.GotConnInfo) {
-				// Corrected: Just print connection info. Protocol details come from TLS handshake.
-				fmt.Fprintf(os.Stderr, "* Connection established to %s\n", info.Conn.RemoteAddr())
+				fmt.Fprintf(os.Stderr, "%s* Connection established to %s%s%s\n", traceColor, valueColor, info.Conn.RemoteAddr(), resetColor)
 			},
 			GotFirstResponseByte: func() {
-				fmt.Fprintf(os.Stderr, "* Receiving response headers...\n")
+				fmt.Fprintf(os.Stderr, "%s* Receiving response headers...%s\n", traceColor, resetColor)
 			},
 		}
-		// Attach trace to request context
-		ctx := httptrace.WithClientTrace(req.Context(), trace)
-		req = req.WithContext(ctx)
+		traceCtx := httptrace.WithClientTrace(currentReq.Context(), trace)
+		currentReq = currentReq.WithContext(traceCtx)
 	}
 
-	// Print request headers if verbose
 	if opts.Verbose {
-		fmt.Fprintf(os.Stderr, "> %s %s %s\n", req.Method, req.URL.RequestURI(), req.Proto)
-		fmt.Fprintf(os.Stderr, "> Host: %s\n", req.Host) // req.Host is populated by NewRequest for client requests
-		printHeadersVerbose(os.Stderr, '>', req.Header)
-		fmt.Fprintln(os.Stderr, ">")
+		fmt.Fprintf(os.Stderr, "> ")
+		fmt.Fprintf(os.Stderr, "%s%s%s ", keyColor, currentReq.Method, resetColor)
+		fmt.Fprintf(os.Stderr, "%s%s%s ", valueColor, currentReq.URL.RequestURI(), resetColor)
+		fmt.Fprintf(os.Stderr, "%s%s%s\n", valueColor, currentReq.Proto, resetColor)
+
+		fmt.Fprintf(os.Stderr, "> ")
+		fmt.Fprintf(os.Stderr, "%s%s%s: ", keyColor, "Host", resetColor)
+		fmt.Fprintf(os.Stderr, "%s%s%s\n", valueColor, currentReq.Host, resetColor)
+
+		printHeadersVerboseColor(os.Stderr, '>', currentReq.Header, opts.Config)
+		fmt.Fprintf(os.Stderr, "> \n")
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(currentReq)
 
-	// Print response headers if verbose and we got a response object
 	if opts.Verbose && resp != nil {
-		fmt.Fprintf(os.Stderr, "< %s %s\n", resp.Proto, resp.Status)
-		printHeadersVerbose(os.Stderr, '<', resp.Header)
-		fmt.Fprintln(os.Stderr, "<")
+		statusCodeColor := errorColor
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			statusCodeColor = successColor
+		} else if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+			statusCodeColor = warningColor
+		}
+
+		statusParts := strings.SplitN(resp.Status, " ", 2)
+		statusCodeStr := statusParts[0]
+		statusText := ""
+		if len(statusParts) > 1 {
+			statusText = statusParts[1]
+		}
+
+		fmt.Fprintf(os.Stderr, "< ")
+		fmt.Fprintf(os.Stderr, "%s%s%s ", valueColor, resp.Proto, resetColor)
+		fmt.Fprintf(os.Stderr, "%s%s%s ", statusCodeColor, statusCodeStr, resetColor)
+		fmt.Fprintf(os.Stderr, "%s%s%s\n", valueColor, statusText, resetColor)
+
+		printHeadersVerboseColor(os.Stderr, '<', resp.Header, opts.Config)
+		fmt.Fprintf(os.Stderr, "< \n")
 	}
 
-	// Handle errors *after* potentially printing verbose info
 	if err != nil {
 		if opts.Verbose {
-			// Print error here in verbose mode for context
-			fmt.Fprintf(os.Stderr, "* Request failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s* Request failed: %v%s\n", errorColor, err, resetColor)
 		}
-		// Return potentially non-nil resp even on error, caller handles Close
 		return resp, fmt.Errorf("error performing request: %w", err)
 	}
 
-	// Note: Caller (main.go) is responsible for closing resp.Body
 	return resp, nil
 }
 
-// printHeadersVerbose prints headers to the specified writer with a prefix.
-// Headers are sorted for consistent output. Used only for verbose mode.
-func printHeadersVerbose(w io.Writer, prefix rune, headers http.Header) {
+// printHeadersVerboseColor prints headers to the specified writer with a prefix and colors.
+func printHeadersVerboseColor(w io.Writer, prefix rune, headers http.Header, cfg config.Config) {
+	keyColor := config.GetAnsiCode(cfg.HeaderKeyColor)
+	valueColor := config.GetAnsiCode(cfg.HeaderValueColor)
+	resetColor := config.ColorReset
+
 	keys := make([]string, 0, len(headers))
 	for k := range headers {
 		keys = append(keys, k)
@@ -200,7 +231,9 @@ func printHeadersVerbose(w io.Writer, prefix rune, headers http.Header) {
 	for _, k := range keys {
 		values := headers[k]
 		for _, v := range values {
-			fmt.Fprintf(w, "%c %s: %s\n", prefix, k, v)
+			fmt.Fprintf(w, "%c ", prefix) // Print prefix plainly
+			fmt.Fprintf(w, "%s%s%s: ", keyColor, k, resetColor)
+			fmt.Fprintf(w, "%s%s%s\n", valueColor, v, resetColor)
 		}
 	}
 }
